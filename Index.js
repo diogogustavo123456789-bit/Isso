@@ -1,93 +1,30 @@
-const {
-  Client,
-  GatewayIntentBits,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
+const { 
+  Client, 
+  GatewayIntentBits, 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle, 
   ChannelType,
   PermissionsBitField,
-  StringSelectMenuBuilder,
-  REST,
-  Routes,
-  SlashCommandBuilder
+  StringSelectMenuBuilder
 } = require('discord.js');
 
-const db = require("./database");
-
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds]
 });
 
-const TOKEN = process.env.TOKEN;
-
-// IDs (JÁ CONFIGURADOS)
-const CLIENT_ID = "1488761851373420574";
-const GUILD_ID = "1488760106790424726";
+// CONFIG
+const TOKEN = "MTQ4ODc2MTg1MTM3MzQyMDU3NA.GZLSF-.STA84E-BIYH5FzXKlBSbUYJWL_wVMujSFBo2W4";
 const CARGO_SUPORTE = "1488760517332963419";
 const CARGO_AUX = "1488760243038060605";
 const CARGO_DONO = "1488760420473766028";
 
-// IA SIMPLES
-function responderIA(msg) {
-  msg = msg.toLowerCase();
-
-  if (msg.includes("pagamento")) return "💳 Seu pagamento pode levar alguns minutos.";
-  if (msg.includes("erro")) return "⚠️ Tente reiniciar ou reinstalar.";
-  if (msg.includes("login")) return "🔐 Verifique seus dados.";
-
-  return "🤖 Não entendi, aguarde suporte.";
-}
-
 client.once("ready", () => {
-  console.log(`🔥 Bot online: ${client.user.tag}`);
+  console.log(`Bot online: ${client.user.tag}`);
 });
 
-// REGISTRAR /painel
-const commands = [
-  new SlashCommandBuilder()
-    .setName('painel')
-    .setDescription('Criar painel de tickets')
-    .toJSON()
-];
-
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-(async () => {
-  try {
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-    console.log("✅ Comando /painel registrado");
-  } catch (err) {
-    console.log(err);
-  }
-})();
-
-// INTERAÇÕES
+// 🔥 PAINEL DE TICKET
 client.on("interactionCreate", async (interaction) => {
-
-  // COMANDO /painel
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === "painel") {
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("abrir_ticket")
-          .setLabel("🎟️ Abrir Ticket")
-          .setStyle(ButtonStyle.Primary)
-      );
-
-      await interaction.reply({
-        content: "🎫 Painel de suporte\nClique abaixo para abrir um ticket:",
-        components: [row]
-      });
-    }
-  }
 
   // ABRIR TICKET
   if (interaction.isButton() && interaction.customId === "abrir_ticket") {
@@ -96,76 +33,90 @@ client.on("interactionCreate", async (interaction) => {
       name: `ticket-${interaction.user.username}`,
       type: ChannelType.GuildText,
       permissionOverwrites: [
-        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
-        { id: CARGO_SUPORTE, allow: [PermissionsBitField.Flags.ViewChannel] },
-        { id: CARGO_AUX, allow: [PermissionsBitField.Flags.ViewChannel] },
-        { id: CARGO_DONO, allow: [PermissionsBitField.Flags.ViewChannel] }
+        {
+          id: interaction.guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: interaction.user.id,
+          allow: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: CARGO_SUPORTE,
+          allow: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: CARGO_AUX,
+          allow: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: CARGO_DONO,
+          allow: [PermissionsBitField.Flags.ViewChannel]
+        }
       ]
     });
 
-    db.run(`INSERT INTO tickets (user, canal, status) VALUES (?, ?, ?)`, [
-      interaction.user.id,
-      canal.id,
-      "aberto"
-    ]);
-
     const menu = new StringSelectMenuBuilder()
-      .setCustomId("duvida")
+      .setCustomId("duvida_select")
       .setPlaceholder("Escolha sua dúvida")
       .addOptions([
         { label: "Pagamento", value: "pagamento" },
-        { label: "Erro", value: "erro" },
-        { label: "Login", value: "login" }
+        { label: "Erro no produto", value: "erro" },
+        { label: "Dúvida geral", value: "duvida" }
       ]);
 
+    const rowMenu = new ActionRowBuilder().addComponents(menu);
+
     const fechar = new ButtonBuilder()
-      .setCustomId("fechar")
+      .setCustomId("fechar_ticket")
       .setLabel("Fechar Ticket")
       .setStyle(ButtonStyle.Danger);
 
+    const rowBtn = new ActionRowBuilder().addComponents(fechar);
+
     await canal.send({
       content: `🎟️ Ticket aberto por ${interaction.user}
+
 <@&${CARGO_SUPORTE}> <@&${CARGO_AUX}> <@&${CARGO_DONO}>`,
-      components: [
-        new ActionRowBuilder().addComponents(menu),
-        new ActionRowBuilder().addComponents(fechar)
-      ]
+      components: [rowMenu, rowBtn]
     });
 
-    await interaction.reply({ content: "✅ Ticket criado!", ephemeral: true });
+    await interaction.reply({ content: "Ticket criado!", ephemeral: true });
   }
 
-  // RESPOSTA MENU
+  // 🧠 RESPOSTA AUTOMÁTICA
   if (interaction.isStringSelectMenu()) {
-    await interaction.reply({
-      content: responderIA(interaction.values[0])
-    });
+
+    let resposta = "";
+
+    if (interaction.values[0] === "pagamento") {
+      resposta = "💳 Se seu pagamento não caiu, aguarde até 10 minutos ou verifique seu comprovante.";
+    }
+
+    if (interaction.values[0] === "erro") {
+      resposta = "⚠️ Tente reiniciar o produto. Se persistir, envie print.";
+    }
+
+    if (interaction.values[0] === "duvida") {
+      resposta = "📩 Descreva melhor sua dúvida e um atendente irá te ajudar.";
+    }
+
+    await interaction.reply({ content: resposta, ephemeral: false });
   }
 
-  // FECHAR
-  if (interaction.isButton() && interaction.customId === "fechar") {
+  // ❌ FECHAR TICKET
+  if (interaction.isButton() && interaction.customId === "fechar_ticket") {
 
     if (
       !interaction.member.roles.cache.has(CARGO_SUPORTE) &&
       !interaction.member.roles.cache.has(CARGO_AUX) &&
       !interaction.member.roles.cache.has(CARGO_DONO)
     ) {
-      return interaction.reply({ content: "❌ Sem permissão!", ephemeral: true });
+      return interaction.reply({ content: "Sem permissão!", ephemeral: true });
     }
-
-    db.run(`UPDATE tickets SET status = ? WHERE canal = ?`, ["fechado", interaction.channel.id]);
 
     await interaction.channel.delete();
   }
-
 });
 
-// RESPOSTA AUTOMÁTICA
-client.on("messageCreate", (msg) => {
-  if (msg.channel.name.startsWith("ticket-") && !msg.author.bot) {
-    msg.reply(responderIA(msg.content));
-  }
-});
-
-client.login(TOKEN);
+client.login(MTQ4ODc2MTg1MTM3MzQyMDU3NA.GZLSF-.STA84E-BIYH5FzXKlBSbUYJWL_wVMujSFBo2W4);
